@@ -1,0 +1,181 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - cyclop
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - lll
+    - maintidx
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - nakedret
+    - nestif
+    - nilerr
+    - nlreturn
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+  # Dropped from the cards config because this module has nothing for them to
+  # look at: bodyclose / noctx (no HTTP), errchkjson (no JSON), promlinter (no
+  # metrics), protogetter (no protobuf), tagalign (no struct tags), contextcheck
+  # and musttag (disabled there too).
+  settings:
+    dupl:
+      threshold: 290
+    exhaustive:
+      check:
+        - switch
+        - map
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    gocognit:
+      min-complexity: 20
+    goconst:
+      ignore-tests: true
+    gocritic:
+      disabled-checks:
+        - sloppyReassign
+        - hugeParam
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+        - experimental
+    gocyclo:
+      min-complexity: 20
+    govet:
+      disable:
+        - fieldalignment
+        - shadow
+      enable-all: true
+    lll:
+      line-length: 140
+    misspell:
+      locale: US
+    nestif:
+      min-complexity: 4
+    revive:
+      rules:
+        - name: atomic
+        - name: confusing-naming
+        - name: confusing-results
+        - name: constant-logical-expr
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: cyclomatic
+          arguments:
+            - 40
+        - name: datarace
+        - name: deep-exit
+        - name: defer
+        - name: dot-imports
+        - name: duplicated-imports
+        - name: early-return
+        - name: error-return
+        - name: error-strings
+        - name: file-length-limit
+          arguments:
+            - max=3000: null
+              skipComments=true: null
+        - name: function-result-limit
+          arguments:
+            - 3
+        - name: identical-branches
+        - name: import-shadowing
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: nested-structs
+        - name: range
+        - name: redefines-builtin-id
+        - name: redundant-import-alias
+        - name: time-equal
+        - name: unchecked-type-assertion
+          arguments:
+            - acceptIgnoredAssertionResult: true
+        - name: unconditional-recursion
+        - name: unexported-return
+        - name: unnecessary-stmt
+        - name: unreachable-code
+        - name: use-any
+        - name: var-declaration
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+  exclusions:
+    generated: lax
+    rules:
+      # A vocabulary suite is meant to be read, not deduplicated: verbs are
+      # deliberately parallel in shape, and a fixture repeats the same three
+      # accessors in every package.
+      - linters:
+          - dupl
+          - errcheck
+          - funlen
+          - gocyclo
+          - gosec
+          - mnd
+          - cyclop
+        path: _test\.go
+      # example/ is the worked suite. It is compiled and run by go test, and it
+      # is held to the same standard as the rest — only the test-file
+      # exclusions above apply to it.
+    paths:
+      - third_party$
+      - builtin$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/GrafGenerator/go-mokkit)
+      custom-order: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
