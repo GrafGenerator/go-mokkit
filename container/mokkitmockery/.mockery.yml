@@ -1,0 +1,12 @@
+packages:
+  github.com/GrafGenerator/go-mokkit/container/mokkitmockery/internal/shop:
+    config:
+      dir: internal/shop
+      pkgname: shop
+      inpackage: true
+      filename: "mocks.go"
+      template: testify
+    interfaces:
+      UserRepository:
+      RateRepository:
+      Audit:
