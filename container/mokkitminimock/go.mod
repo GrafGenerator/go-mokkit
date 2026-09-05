@@ -2,11 +2,8 @@ module github.com/GrafGenerator/go-mokkit/container/mokkitminimock
 
 go 1.27
 
-// Until the first tag: the adapter tracks the core in this repository.
-replace github.com/GrafGenerator/go-mokkit => ../..
-
 require (
-	github.com/GrafGenerator/go-mokkit v0.0.0-00010101000000-000000000000
+	github.com/GrafGenerator/go-mokkit v0.2.0
 	github.com/gojuno/minimock/v3 v3.4.7
 )
 

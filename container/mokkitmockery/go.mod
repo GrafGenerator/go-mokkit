@@ -3,7 +3,7 @@ module github.com/GrafGenerator/go-mokkit/container/mokkitmockery
 go 1.27
 
 require (
-	github.com/GrafGenerator/go-mokkit v0.0.0
+	github.com/GrafGenerator/go-mokkit v0.2.0
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -13,6 +13,3 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// Until the first tag: the adapter tracks the core in this repository.
-replace github.com/GrafGenerator/go-mokkit => ../..

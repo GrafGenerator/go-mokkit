@@ -1,2 +1,4 @@
+github.com/GrafGenerator/go-mokkit v0.2.0 h1:LTCAIGU/KnHRBp85mMjZZq+8+fdZ2+RKwzKCmUEbUp4=
+github.com/GrafGenerator/go-mokkit v0.2.0/go.mod h1:jwYt0XdpBndlHg3ujgjiVAKGrnAYt78SWoZTnGXGEBk=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
 go.uber.org/mock v0.6.0/go.mod h1:KiVJ4BqZJaMj4svdfmHM0AUx4NJYO8ZNpPnZn1Z+BBU=
