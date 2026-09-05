@@ -1,2 +1,6 @@
+github.com/GrafGenerator/go-mokkit v0.2.0 h1:LTCAIGU/KnHRBp85mMjZZq+8+fdZ2+RKwzKCmUEbUp4=
+github.com/GrafGenerator/go-mokkit v0.2.0/go.mod h1:jwYt0XdpBndlHg3ujgjiVAKGrnAYt78SWoZTnGXGEBk=
+github.com/GrafGenerator/go-mokkit/container/mokkitgomock v0.2.0 h1:f7kW7nEg1cvFYnfniUNp1WvXy8S5ASd5uiJL4o4Q4LQ=
+github.com/GrafGenerator/go-mokkit/container/mokkitgomock v0.2.0/go.mod h1:cLmxV2OSwBtQ5cZdGfUXfeuTzReXUT5H5X8LjKnqvn0=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
 go.uber.org/mock v0.6.0/go.mod h1:KiVJ4BqZJaMj4svdfmHM0AUx4NJYO8ZNpPnZn1Z+BBU=
