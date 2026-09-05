@@ -109,12 +109,10 @@ func Controller(r mokkit.Resolver) *gomock.Controller {
 // Satisfied is an Inspect step asserting that every expectation declared so far
 // has been met by the time the chain reaches it.
 //
-// It exists for attribution. An expectation declared with Times(n) is otherwise
-// only checked when the controller finishes at cleanup, and that failure is
-// reported against the line of the EXPECT call — inside the Arrange verb, never
-// the test's own. Placing this in Inspect fails at the test's line instead;
-// the controller's cleanup still reports which call was missing, so the two
-// together give both the location and the detail.
+// An expectation declared with Times(n) is otherwise only checked when the
+// controller finishes at cleanup, reported against the EXPECT call's line.
+// Satisfied in an Inspect chain fails at the test's own line; the controller's
+// cleanup still names the missing call.
 func Satisfied() mokkit.Step {
 	return mokkit.NewStep("gomock.Satisfied", func(_ context.Context, h mokkit.Host) error {
 		if !Controller(h).Satisfied() {

@@ -33,10 +33,8 @@ import (
 )
 
 // TestingT is what a mockery-generated constructor asks for: testify's
-// reporter plus Cleanup. Add spells it anonymously in its signature because a
-// defined type is not identical to the anonymous one in generated code, and the
-// two must unify for M to be inferred; this named form exists for
-// documentation and for hand-written constructors.
+// reporter plus Cleanup. It is an alias, matching the anonymous interface in
+// generated code; use it for hand-written constructors.
 type TestingT = interface {
 	mock.TestingT
 	Cleanup(func())
@@ -162,9 +160,8 @@ type expectations struct {
 // Satisfied is an Inspect step asserting that every expectation declared so far
 // has been met by the time the chain reaches it.
 //
-// It exists for attribution. A mock's own assertion only runs when the test
-// finishes, and that failure is reported without a phase or a verb. Placing
-// this in Inspect fails at the test's line instead.
+// A mock's own assertion only runs when the test finishes, reported without a
+// phase or a verb. Satisfied in an Inspect chain fails at the test's own line.
 func Satisfied() mokkit.Step {
 	return mokkit.NewStep("mockery.Satisfied", func(_ context.Context, h mokkit.Host) error {
 		exp := mokkit.Resolve[*expectations](h)

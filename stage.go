@@ -112,9 +112,8 @@ func (s *Stage) Context() context.Context { return s.ctx }
 // itself a helper and keep failures pointing at the test's own line.
 func (s *Stage) TB() TB { return s.t }
 
-// Tokens reports the per-test artifact registry backing New and Of. A fixture
-// embeds it, which is what puts f.New[Buyer]() and f.Of[Buyer]() on the fixture
-// itself.
+// Tokens reports the per-test artifact registry backing New and Of. Embed it
+// in a fixture to have f.New[Buyer]() and f.Of[Buyer]() promoted onto it.
 func (s *Stage) Tokens() *Tokens { return s.tokens }
 
 // Host reports what a step receives, for the occasions that want one outside a

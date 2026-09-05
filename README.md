@@ -25,9 +25,7 @@ other code — and a failure reports the test's own line:
 client_cache_service_test.go:14: inspect: CacheQueried: the cache was never asked for "client-1"
 ```
 
-**Requires Go 1.27**, which is the first release where methods may declare type parameters. That is
-load-bearing here, not incidental: it is what lets artifacts be reached by a token instead of a
-string, and what puts `Resolve` on the host rather than in a free function.
+**Requires Go 1.27** — the token accessors and `Host.Resolve` are generic methods.
 
 ---
 
@@ -49,8 +47,8 @@ A test has an **Arrange** block, an **Act**, and an **Inspect**. They differ in 
 | Inspect | **soft** — `t.Errorf`, and carry on, so one run reports *every* failing observation rather than only the first. |
 
 Chains are **eager**. There is no terminal call and nothing is deferred: by the time a verb returns,
-its step has already run. That is why an Act verb can simply return its result, and why a chain can
-be broken into several statements whenever that reads better.
+its step has already run. An Act verb returns its result directly, and a chain can be broken into
+several statements whenever that reads better.
 
 ---
 
@@ -105,8 +103,8 @@ func (a Act) GetClient(id string) *clients.Client {
 
 ### Where verbs live
 
-One rule, and it is worth enforcing in review: **a scenario file holds tests and
-nothing else.** Verbs live in files named for their phase.
+**A scenario file holds tests and nothing else.** Verbs live in files named for
+their phase.
 
 ```
 fixture_test.go     composition, tokens, the fixture. No verbs.
@@ -116,21 +114,13 @@ inspect_test.go     Inspect verbs, and the plain-function Steps And and All take
 <feature>_test.go   tests
 ```
 
-The reason is that a verb in a scenario file is invisible: it reads as part of
-the story on first encounter, so the next person writes a second one beside it
-rather than reaching for the one that already exists, and the vocabulary stops
-compounding. Keeping verbs out of scenario files is what makes "is there already
-a verb for this?" a question with an answer.
-
-A suite large enough to want it can split a phase by feature — `arrange_cache_test.go`,
-`arrange_billing_test.go` — which is the Go-normal shape and keeps the rule intact.
+Split a phase by feature when it grows: `arrange_cache_test.go`,
+`arrange_billing_test.go`.
 
 ### Verbs should be atomic
 
-A verb sets up **one** condition and says so in its name. Resist the verb that
-arranges a whole working world: it hides which of the things it did the test
-actually depends on, and every test that needs a variation grows another
-parameter until nobody can tell what a given call sets up.
+A verb sets up **one** condition and says so in its name. Do not write a verb
+that arranges a whole working world.
 
 ```go
 // Each condition is named, so the branch under test is visible in the test.
@@ -140,16 +130,14 @@ f.Arrange().
 	APlasticCardReadyToActivate[Card]()
 ```
 
-A test for the refusal path then differs from the success path by exactly one
-verb, which is what makes it obvious what is being tested. Verbs that depend on
-an earlier one should say so when it is missing — "no category arranged: an
-emission belongs to one" beats a foreign-key violation.
+A test for a refusal path then differs from the success path by exactly one
+verb. A verb that depends on an earlier one reports the missing prerequisite:
+"no category arranged: an emission belongs to one".
 
 ### Vocabulary from another package
 
-Go methods must live in their type's package, so verbs on `Arrange` share one package — split across
-files, one per feature. Vocabulary from elsewhere is written as a plain function returning a
-`mokkit.Step`, and enters through `And`, which keeps the chain unbroken:
+Vocabulary from another package is written as a plain function returning a
+`mokkit.Step`, and enters through `And` with the chain unbroken:
 
 ```go
 func HasClient(id string) mokkit.Step {
@@ -175,14 +163,12 @@ func (i Inspect) All(steps ...mokkit.Step) Inspect { i.Helper(); i.Chain.All(ste
 
 All three have the same shape — call for effect, return the receiver.
 
-### Do not report around the chain
+### Report through the chain
 
-`Chain` deliberately does **not** embed `TB`. A verb that calls `t.Fatalf` directly — or hands the
-chain to `require` — reports around the phase machinery: inside an `All` branch it would `Goexit`
-the wrong goroutine, lose the `phase: verb:` prefix, and let a fail-fast chain carry on regardless.
-
-Return an error from the step. When you do want an assertion library, hand it `c.TB()`, never the
-chain: `assert` suits Inspect's soft failure, `require` suits Arrange's hard one.
+A step reports by returning an error — never by calling the test's `Fatalf` or
+`Errorf` from inside the step. When you want an assertion library, hand it
+`c.TB()`, never the chain: `assert` suits Inspect's soft failure, `require`
+suits Arrange's hard one.
 
 ---
 
@@ -241,10 +227,8 @@ side and returns a **value**, usable in any phase. Nothing is declared above the
 never breaks.
 
 When the artifact has **identity** — a recording double whose state the Act mutates and the Inspect
-observes — read it with `f.Ref[Buyer]()`, which hands back the pointer. A copy would be a different
-thing, and the failure would be silent: assertions reading stale state. `Ref` fails as loudly as `Of`
-when nothing was arranged, so the guarantee is the same; only the aliasing differs. Prefer `Of`, so
-a read-only phase cannot write through what it is observing.
+observes — read it with `f.Ref[Buyer]()`, which hands back the pointer. Like `Of`, it fails when
+nothing was arranged. Prefer `Of` everywhere else: a value cannot be written through by accident.
 
 What the compiler checks for you: a misspelt token is `undefined: Byer`; passing a token that names
 an `Order` to a verb declared `[K mokkit.Token[Client]]` is a type error; and reading a role that no
@@ -271,7 +255,7 @@ func (a Arrange) ClientExists[K mokkit.Token[Client]](status string) Arrange {
 }
 ```
 
-`mokkit.NameOf[K]()` puts the role in the failure message, which is worth the two extra tokens:
+`mokkit.NameOf[K]()` puts the role in the failure message:
 
 ```
 discount_test.go:23: arrange: OrderFor[Cart]: the client it was given is unset
@@ -311,9 +295,9 @@ func TestMain(m *testing.M) {
 }
 ```
 
-Compose in `TestMain`, not `init` — `gochecknoinits` is common in strict lint configs.
+Compose in `TestMain`, not `init`.
 
-The per-test fixture embeds the stage's tokens, which is what puts `New` and `Of` on the fixture:
+The per-test fixture embeds the stage's tokens; `New` and `Of` are promoted onto it:
 
 ```go
 type fixture struct {
@@ -354,7 +338,7 @@ is closed when the stage ends; an `Instance` is yours to close, and an alias clo
 it never owned what it handed back.
 
 Factories receive a resolver spanning the whole composition, so a real service is built over doubles
-another container registered. That is the entire mock-to-DI bridge, with no ambient state.
+another container registered — the mock-to-DI bridge.
 
 ### The adapters
 

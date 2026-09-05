@@ -72,8 +72,7 @@ type helper interface{ Helper() }
 
 // TB reports the test this chain belongs to. Hand it, not the chain, to an
 // assertion library: assert suits Inspect's soft failure, require suits
-// Arrange's hard one, and going through TB keeps a verb from reporting around
-// the chain by accident.
+// Arrange's hard one.
 func (c *Chain) TB() TB { return c.tb }
 
 // Add runs one named step and reports failure according to the chain's
@@ -88,9 +87,7 @@ func (c *Chain) Add(name string, fn StepFunc) *Chain {
 }
 
 // And runs vocabulary authored as plain functions, including from packages that
-// cannot add methods to this chain's type. This is what keeps a chain unbroken
-// across a foreign verb, and it is named to read as a continuation of the
-// sentence rather than as an imperative aside:
+// cannot add methods to this chain's type, with the chain unbroken:
 //
 //	f.Arrange().
 //	    UserExists[Buyer](Vip).

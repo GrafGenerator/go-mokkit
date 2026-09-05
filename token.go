@@ -13,8 +13,7 @@ import (
 //	type Buyer struct{ mokkit.Artifact[User] }
 //
 // One line declares both the role and the type of the thing that role stands
-// for, and the type is recovered by inference at every call site — so a token
-// is spelled once and carries its meaning everywhere it is used.
+// for; the type is inferred at every call site.
 type Artifact[T any] struct{}
 
 func (Artifact[T]) artifact() T {
@@ -33,9 +32,8 @@ type Token[T any] interface{ artifact() T }
 func NameOf[K any]() string { return reflect.TypeFor[K]().Name() }
 
 // Tokens holds the artifacts a test's verbs produce, keyed by the token that
-// names each one. It is the answer to "declare the artifact where you use it":
-// New hands a producing verb its sink and Of reads the value back, both spelled
-// only with the token, in any phase, without a variable declared above.
+// names each one. New hands a producing verb its sink and Of reads the value
+// back, both spelled only with the token, in any phase.
 //
 // Tokens belongs to a single test. Stage creates one per stage, so nothing
 // leaks between tests.
@@ -76,10 +74,8 @@ func (r *Tokens) New[K Token[A], A any]() *A {
 }
 
 // Of returns the value filed under the role K, failing the test when no verb
-// has produced it. It returns a value rather than a pointer, which keeps *T out
-// of read-only positions and is safe inside a single chain expression: the Go
-// spec orders method calls left to right, where a bare variable operand is
-// unordered against the call that fills it.
+// has produced it. It is safe to call mid-chain, as an argument to a later verb
+// in the same expression.
 func (r *Tokens) Of[K Token[A], A any]() A {
 	r.t.Helper()
 
@@ -99,13 +95,11 @@ func (r *Tokens) Of[K Token[A], A any]() A {
 }
 
 // Ref returns the artifact filed under the role K as a pointer, failing the
-// test when no verb has produced it. It is Of for an artifact that has
-// identity: a double whose state a verb mutates and a later phase observes.
+// test when no verb has produced it.
 //
-// Prefer Of. A value cannot be written through by accident, which is what keeps
-// a read-only phase read-only. Reach for Ref when a copy would be a different
-// thing from the original — a recording double, a probe, anything whose whole
-// point is that the artifact the Act mutated is the artifact the Inspect reads.
+// Use Ref for an artifact with identity — a recording double or probe whose
+// state the Act mutates and a later phase observes. Everywhere else use Of,
+// which hands back a value.
 func (r *Tokens) Ref[K Token[A], A any]() *A {
 	r.t.Helper()
 

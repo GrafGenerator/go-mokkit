@@ -26,7 +26,7 @@ type StepEvent struct {
 // their own goroutines, and suites may run tests in parallel. Events for one
 // stage may therefore interleave with another's; StageID is what groups them.
 //
-// An Observer must not fail the test. It has no TB on purpose.
+// An Observer must not fail the test.
 type Observer interface {
 	// StageEntered reports a test beginning to run against the composition.
 	StageEntered(test, stageID string)

@@ -63,10 +63,9 @@ func (h Host) TryResolve[T any]() (T, bool) { return TryResolve[T](h.r) }
 
 // Resolve returns the service registered as T.
 //
-// It panics when nothing is. Inside a Step that is intentional — the executor
-// recovers the panic and reports it as a failure attributed to the step — so
-// vocabulary can call Resolve without error handling. Host.Resolve is the same
-// thing spelled as a method, which is what a verb normally wants.
+// It panics when nothing is registered; inside a Step, the executor recovers
+// the panic and reports it as a failure attributed to the step, so vocabulary
+// calls Resolve without error handling. Inside a verb, prefer Host.Resolve.
 func Resolve[T any](r Resolver) T {
 	v, present, ok := lookup[T](r)
 	if !ok {
