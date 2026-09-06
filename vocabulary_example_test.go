@@ -145,20 +145,14 @@ type (
 
 // --- the vocabulary ----------------------------------------------------------
 
-// The three phase types are declared as one group, because gofumpt rejects
-// three consecutive single-line type declarations and a suite people copy
-// should lint clean where they copy it to.
 type (
 	Arrange struct{ *mokkit.Chain }
 	Act     struct{ *mokkit.Chain }
 	Inspect struct{ *mokkit.Chain }
 )
 
-// Chain's own chain-returning methods are promoted as returning *mokkit.Chain,
-// which would end the fluent chain at the first call. Each vocabulary type
-// re-declares the ones it wants to stay fluent — one line each, written once
-// per suite. WithContext mutates the chain and hands it back exactly as And and
-// All do, so its forwarder has the same shape as theirs.
+// And, All and WithContext are promoted from *Chain returning *Chain, so a
+// vocabulary type re-declares the ones it wants fluent.
 func (a Arrange) And(steps ...mokkit.Step) Arrange {
 	a.Helper()
 	a.Chain.And(steps...)
@@ -194,125 +188,111 @@ func (a Arrange) WithContext(ctx context.Context) Arrange {
 	return a
 }
 
-// newUser seeds the identifier from the role, so a scene with several actors
-// needs no explicit ids to tell them apart.
+// newUser seeds the identifier from the role.
 func newUser(role string, status Status) User {
 	return User{ID: strings.ToLower(role) + "-1", Status: status}
 }
 
-// UserExists is the producing form: the role names the artifact, so the verb
-// takes no sink and the chain is never broken to get one out. NameOf puts the
-// role in the step label, which is what a failure reports under.
+// UserExists files a user under the role K. The role goes into the step label.
 func (a Arrange) UserExists[K mokkit.Token[User]](status Status) Arrange {
 	a.Helper()
-	a.Add("UserExists["+mokkit.NameOf[K]()+"]", func(_ context.Context, h mokkit.Host) error {
+
+	return mokkit.Do(a, func(h mokkit.Host) {
 		u := newUser(mokkit.NameOf[K](), status)
 		h.Resolve[*fakeUsers]().add(u)
 		*a.New[K]() = u
-
-		return nil
-	})
-
-	return a
+	}, mokkit.NameOf[K]())
 }
 
-// AUser is the return form, and the default for a test with a single artifact:
-// naming a role earns nothing when there is only one of something, and the verb
-// is naturally terminal because the step has already run by the time it
-// returns.
+// AUser hands the user straight back, for a test with a single actor.
 func (a Arrange) AUser(status Status) User {
 	a.Helper()
 
-	var u User
-
-	a.Add("AUser", func(_ context.Context, h mokkit.Host) error {
-		u = newUser("user", status)
+	return a.Get(func(h mokkit.Host) (User, error) {
+		u := newUser("user", status)
 		h.Resolve[*fakeUsers]().add(u)
 
-		return nil
+		return u, nil
 	})
-
-	return u
 }
 
 func (a Arrange) RateIs(status Status, rate float64) Arrange {
 	a.Helper()
-	a.Add("RateIs", func(_ context.Context, h mokkit.Host) error {
-		h.Resolve[*fakeRates]().set(status, rate)
 
-		return nil
-	})
-
-	return a
+	return mokkit.Do(a, func(h mokkit.Host) { h.Resolve[*fakeRates]().set(status, rate) })
 }
 
-// RateForUserIs is the consuming form: it takes the artifact by value, which is
-// safe mid-chain because the spec orders method calls left to right — the verb
-// that produced the user has run by the time Of reads it, and a value keeps
-// *User out of a read-only position.
+// RateForUserIs takes the user by value: the verb that produced it has run by
+// the time Of reads it.
 func (a Arrange) RateForUserIs(u User, rate float64) Arrange {
 	a.Helper()
-	a.Add("RateForUserIs", func(_ context.Context, h mokkit.Host) error {
-		h.Resolve[*fakeRates]().set(u.Status, rate)
 
-		return nil
-	})
-
-	return a
+	return mokkit.Do(a, func(h mokkit.Host) { h.Resolve[*fakeRates]().set(u.Status, rate) })
 }
 
-// CalculateDiscount is naturally terminal, so it hands its artifact back
-// directly rather than filing it under a role.
+// CalculateDiscount hands its result back. An error fails the act.
 func (a Act) CalculateDiscount(u User, total float64) Result {
 	a.Helper()
 
-	var out Result
-
-	a.Add("CalculateDiscount", func(ctx context.Context, h mokkit.Host) error {
-		var err error
-		out, err = h.Resolve[*DiscountService]().Calculate(ctx, u.ID, total)
-
-		return err
+	return a.Get(func(h mokkit.Host) (Result, error) {
+		return h.Resolve[*DiscountService]().Calculate(h.Context(), u.ID, total)
 	})
+}
 
-	return out
+// TryCalculateDiscount hands back the outcome, error included, for a test
+// about a refusal.
+func (a Act) TryCalculateDiscount(u User, total float64) mokkit.Outcome[Result] {
+	a.Helper()
+
+	return a.Try(func(h mokkit.Host) (Result, error) {
+		return h.Resolve[*DiscountService]().Calculate(h.Context(), u.ID, total)
+	})
 }
 
 func (i Inspect) DiscountApplied(r Result, want float64) Inspect {
 	i.Helper()
-	i.Add("DiscountApplied", func(context.Context, mokkit.Host) error {
+
+	return mokkit.Do(i, func(mokkit.Host) error {
 		if r.Discount != want {
 			return fmt.Errorf("want discount %v, got %v", want, r.Discount)
 		}
 
 		return nil
 	})
-
-	return i
 }
 
 func (i Inspect) CalculatedFor(r Result, u User) Inspect {
 	i.Helper()
-	i.Add("CalculatedFor", func(context.Context, mokkit.Host) error {
+
+	return mokkit.Do(i, func(mokkit.Host) error {
 		if r.UserID != u.ID {
 			return fmt.Errorf("want result for %s, got %s", u.ID, r.UserID)
 		}
 
 		return nil
 	})
-
-	return i
 }
 
-// userQueried and rateQueried are the plain-function form: this is how a
-// package that cannot add methods to Inspect contributes vocabulary, and what
-// And and All consume. Staying generic over the token keeps the role legible
-// where the step is written.
+func (i Inspect) Refused(o mokkit.Outcome[Result], because string) Inspect {
+	i.Helper()
+
+	return mokkit.Do(i, func(mokkit.Host) error {
+		if o.Err == nil {
+			return fmt.Errorf("want a refusal because %s, got %+v", because, o.Value)
+		}
+		if !strings.Contains(o.Err.Error(), because) {
+			return fmt.Errorf("want the refusal to say %q, got: %w", because, o.Err)
+		}
+
+		return nil
+	})
+}
+
+// userQueried and rateQueried are plain-function vocabulary: what a package
+// that cannot add methods to Inspect publishes, and what And and All take.
 func userQueried[K mokkit.Token[User]](f *fixture) mokkit.Step {
-	// The artifact is read here, on the test's own goroutine, rather than
-	// inside the step: Of reports a role nothing produced through Fatalf, and a
-	// branch of All runs on a goroutine whose Goexit would abandon the test
-	// rather than fail it.
+	// Of reports an unarranged role through Fatalf, so it is read here, on the
+	// test's goroutine, rather than inside a branch of All.
 	want := f.Of[K]().ID
 
 	return mokkit.NewStep("userQueried["+mokkit.NameOf[K]()+"]", func(_ context.Context, h mokkit.Host) error {
@@ -334,8 +314,7 @@ func rateQueried(status Status) mokkit.Step {
 	})
 }
 
-// rateIsSeededElsewhere stands in for a verb owned by another package, which
-// And runs without breaking the chain it appears in.
+// rateIsSeededElsewhere stands in for a verb owned by another package.
 func rateIsSeededElsewhere(status Status, rate float64) mokkit.Step {
 	return mokkit.NewStep("rates.Seeded", func(_ context.Context, h mokkit.Host) error {
 		h.Resolve[*fakeRates]().set(status, rate)
@@ -346,8 +325,7 @@ func rateIsSeededElsewhere(status Status, rate float64) mokkit.Step {
 
 type tenantKey struct{}
 
-// tenantIs observes the context a step runs under, which is what makes
-// WithContext testable from outside.
+// tenantIs observes the context a step runs under.
 func tenantIs(want string) mokkit.Step {
 	return mokkit.NewStep("tenantIs("+want+")", func(ctx context.Context, _ mokkit.Host) error {
 		if got, _ := ctx.Value(tenantKey{}).(string); got != want {
@@ -360,26 +338,28 @@ func tenantIs(want string) mokkit.Step {
 
 // --- the fixture -------------------------------------------------------------
 
-// The fixture embeds the stage's token registry, which is what puts
-// f.Of[Buyer]() on the fixture itself — the read side of the same registry the
-// verbs write through.
-type fixture struct {
-	*mokkit.Tokens
+type fixture = mokkit.Fixture[Arrange, Act, Inspect]
 
-	stage *mokkit.Stage
-}
-
+// newFixture composes the doubles and the real subject with bag, per test.
+// Each double is registered under its concrete type, for the vocabulary, and
+// aliased to its interface, for the subject.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 
-	stage := discountStage(t)
+	b := bag.New()
+	bag.Scoped(b, func(mokkit.Resolver) *fakeUsers { return &fakeUsers{byID: map[string]User{}} })
+	bag.Scoped(b, func(mokkit.Resolver) *fakeRates { return &fakeRates{byName: map[Status]float64{}} })
+	bag.Alias[UserRepository, *fakeUsers](b)
+	bag.Alias[RateRepository, *fakeRates](b)
+	bag.Scoped(b, func(r mokkit.Resolver) *DiscountService {
+		return &DiscountService{
+			Users: mokkit.Resolve[UserRepository](r),
+			Rates: mokkit.Resolve[RateRepository](r),
+		}
+	})
 
-	return &fixture{Tokens: stage.Tokens(), stage: stage}
+	return mokkit.Enter[Arrange, Act, Inspect](t, b)
 }
-
-func (f *fixture) Arrange() Arrange { return Arrange{f.stage.Arrange()} }
-func (f *fixture) Act() Act         { return Act{f.stage.Act()} }
-func (f *fixture) Inspect() Inspect { return Inspect{f.stage.Inspect()} }
 
 // --- the tests ---------------------------------------------------------------
 
@@ -463,6 +443,16 @@ func TestForeignVocabularyKeepsTheChainUnbroken(t *testing.T) {
 	f.Inspect().DiscountApplied(result, 15)
 }
 
+func TestCalculateDiscount_ForAnUnknownUser_IsRefused(t *testing.T) {
+	f := newFixture(t)
+
+	f.Arrange().RateIs(Vip, 0.15)
+
+	outcome := f.Act().TryCalculateDiscount(User{ID: "ghost"}, 100)
+
+	f.Inspect().Refused(outcome, "no user ghost")
+}
+
 func TestWithContextAppliesToTheStepsThatFollowIt(t *testing.T) {
 	f := newFixture(t)
 
@@ -476,39 +466,4 @@ func TestWithContextAppliesToTheStepsThatFollowIt(t *testing.T) {
 	// The override belongs to the chain that asked for it: a chain started
 	// afterwards runs on the stage's own context again.
 	f.Inspect().And(tenantIs(""))
-}
-
-// --- the container -----------------------------------------------------------
-
-// The doubles and the real subject are composed with bag: hand-wired, with each
-// factory pulling its collaborators from the stage. That is all the C# original
-// needed a DI container and a mock-to-DI bridge for.
-func discountStage(t *testing.T) *mokkit.Stage {
-	t.Helper()
-
-	b := bag.New()
-
-	// Each double is reachable under its concrete type, so vocabulary can
-	// arrange and observe it, and under its interface, so the subject receives
-	// that very same instance.
-	bag.Scoped(b, func(mokkit.Resolver) *fakeUsers { return &fakeUsers{byID: map[string]User{}} })
-	bag.Scoped(b, func(mokkit.Resolver) *fakeRates { return &fakeRates{byName: map[Status]float64{}} })
-	bag.Alias[UserRepository, *fakeUsers](b)
-	bag.Alias[RateRepository, *fakeRates](b)
-
-	// A factory takes the resolver, so the free Resolve is what it uses; inside
-	// a verb the Host's method form reads better and means the same thing.
-	bag.Scoped(b, func(r mokkit.Resolver) *DiscountService {
-		return &DiscountService{
-			Users: mokkit.Resolve[UserRepository](r),
-			Rates: mokkit.Resolve[RateRepository](r),
-		}
-	})
-
-	setup, err := mokkit.NewSetup(context.Background(), b)
-	if err != nil {
-		t.Fatalf("composing the stage: %v", err)
-	}
-
-	return setup.EnterStage(t)
 }

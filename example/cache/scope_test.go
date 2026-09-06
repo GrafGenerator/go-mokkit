@@ -1,7 +1,6 @@
 package cache_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -10,20 +9,16 @@ import (
 )
 
 // RetrievedClient is a value scope: a run of assertions that all concern one
-// value, grouped so the value is named once.
-//
-// It needs nothing from mokkit. A scope is just another vocabulary type — one
-// that embeds the chain and carries the value alongside it. C# needed
-// ThenValueScope because its chain was deferred and the value had to be
-// threaded into steps that had not run yet; here the value is simply a field.
+// value, which is named once. A scope is a vocabulary type that embeds the
+// chain and carries the value alongside it.
 type RetrievedClient struct {
 	*mokkit.Chain
 
 	got *clients.Client
 }
 
-// Retrieved opens the scope. Returning to the outer chain is just using the
-// embedded *Chain, or starting a fresh f.Inspect().
+// Retrieved opens the scope. The outer chain is the embedded *Chain, or a
+// fresh f.Inspect().
 func (i Inspect) Retrieved(got *clients.Client) RetrievedClient {
 	i.Helper()
 
@@ -32,33 +27,32 @@ func (i Inspect) Retrieved(got *clients.Client) RetrievedClient {
 
 func (s RetrievedClient) Found() RetrievedClient {
 	s.Helper()
-	s.Add("Retrieved.Found", func(context.Context, mokkit.Host) error {
+
+	return mokkit.Do(s, func(mokkit.Host) error {
 		if s.got == nil {
 			return errors.New("want a client, got nothing")
 		}
 
 		return nil
 	})
-
-	return s
 }
 
 func (s RetrievedClient) Nothing() RetrievedClient {
 	s.Helper()
-	s.Add("Retrieved.Nothing", func(context.Context, mokkit.Host) error {
+
+	return mokkit.Do(s, func(mokkit.Host) error {
 		if s.got != nil {
 			return fmt.Errorf("want nothing, got %+v", *s.got)
 		}
 
 		return nil
 	})
-
-	return s
 }
 
 func (s RetrievedClient) Named(want string) RetrievedClient {
 	s.Helper()
-	s.Add("Retrieved.Named", func(context.Context, mokkit.Host) error {
+
+	return mokkit.Do(s, func(mokkit.Host) error {
 		if s.got == nil {
 			return fmt.Errorf("want a client named %q, got nothing", want)
 		}
@@ -68,13 +62,12 @@ func (s RetrievedClient) Named(want string) RetrievedClient {
 
 		return nil
 	})
-
-	return s
 }
 
 func (s RetrievedClient) Active() RetrievedClient {
 	s.Helper()
-	s.Add("Retrieved.Active", func(context.Context, mokkit.Host) error {
+
+	return mokkit.Do(s, func(mokkit.Host) error {
 		if s.got == nil {
 			return errors.New("want an active client, got nothing")
 		}
@@ -84,6 +77,4 @@ func (s RetrievedClient) Active() RetrievedClient {
 
 		return nil
 	})
-
-	return s
 }
