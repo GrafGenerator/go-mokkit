@@ -105,6 +105,29 @@ func (a acting) TryGreetAs(name string) Outcome[string] {
 	})
 }
 
+func (a acting) AttemptGreet(name string) error {
+	a.Helper()
+
+	return a.Attempt(func(h Host) error {
+		if name == "" {
+			return errors.New("nobody to greet")
+		}
+		h.Resolve[Greeter]().Greet(name)
+
+		return nil
+	})
+}
+
+func (a acting) AttemptGreetFor[K Token[User]]() error {
+	a.Helper()
+
+	return a.AttemptFor[K](func(h Host) error {
+		h.Resolve[Greeter]().Greet(a.Of[K]().ID)
+
+		return nil
+	})
+}
+
 func (a acting) TryPanicking() Outcome[string] {
 	a.Helper()
 
@@ -261,6 +284,33 @@ func TestTryHandsBackTheOutcomeInsteadOfFailing(t *testing.T) {
 	}
 
 	inspecting{stage.Inspect()}.Greeted("bob")
+}
+
+func TestAttemptHandsBackTheErrorInsteadOfFailing(t *testing.T) {
+	obs := newRecordingObserver()
+	stage, g := doStage(t, t)
+	stage.observers = []Observer{obs}
+	stage.Tokens().New[role]().ID = "role"
+
+	act := acting{stage.Act()}
+
+	if err := act.AttemptGreet(""); err == nil || err.Error() != "nobody to greet" {
+		t.Errorf("want the refusal as the outcome, got %v", err)
+	}
+	if err := act.AttemptGreet("bob"); err != nil {
+		t.Errorf("want no error, got %v", err)
+	}
+	if err := act.AttemptGreetFor[role](); err != nil {
+		t.Errorf("want no error, got %v", err)
+	}
+	if calls := g.Calls(); len(calls) != 2 || calls[1] != "role" {
+		t.Errorf("want the two greetings that were not refused, got %v", calls)
+	}
+
+	_, steps, _ := obs.snapshot()
+	if len(steps) != 3 || steps[0].Step != "AttemptGreet" || steps[2].Step != "AttemptGreetFor[role]" {
+		t.Errorf("want the steps named after the verbs, got %+v", steps)
+	}
 }
 
 func TestTryStillFailsOnAPanic(t *testing.T) {

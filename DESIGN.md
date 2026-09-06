@@ -1061,7 +1061,8 @@ constraint, so the verb writes the narrowest one.
 
 `Chain.Get[T]` and `Chain.Try[T]` are generic methods, which Go 1.27 allows. `Get` is the act that
 returns its artifact and fails on error; `Try` is the act whose error is the artifact, returned as an
-`Outcome[T]`. Before `Try`, every activity suite in the trial wrote each act verb twice — once
+`Outcome[T]`; `Attempt` is `Try` for an operation that returns only an error. Before `Try`, every
+activity suite in the trial wrote each act verb twice — once
 returning the value, once returning the error — and the workflow suites had invented an `Outcome`
 of their own. A panic inside `Try` still fails the chain: a crash is not an outcome.
 

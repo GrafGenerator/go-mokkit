@@ -147,6 +147,39 @@ func (c *Chain) TryAs[T any](name string, fn func(Host) (T, error)) Outcome[T] {
 	return out
 }
 
+// Attempt runs fn as a step and returns the error it reported without failing
+// the chain on it: Try for an operation whose only outcome is whether it
+// failed. A panic inside fn still fails the chain.
+//
+// The step is named after the verb that called Attempt.
+func (c *Chain) Attempt(fn func(Host) error) error {
+	c.tb.Helper()
+
+	return c.AttemptAs(verbLabel(""), fn)
+}
+
+// AttemptFor is Attempt for a verb generic over a role, named as DoFor names
+// its step.
+func (c *Chain) AttemptFor[K any](fn func(Host) error) error {
+	c.tb.Helper()
+
+	return c.AttemptAs(verbLabel(NameOf[K]()), fn)
+}
+
+// AttemptAs is Attempt with the step's name given.
+func (c *Chain) AttemptAs(name string, fn func(Host) error) error {
+	c.tb.Helper()
+
+	var out error
+	c.run(name, NewStep(name, func(_ context.Context, h Host) error {
+		out = fn(h)
+
+		return nil
+	}))
+
+	return out
+}
+
 func toStep[F Body](fn F) Step {
 	switch fn := any(fn).(type) {
 	case func(Host):
@@ -167,7 +200,7 @@ func toStep[F Body](fn F) Step {
 }
 
 // verbFrames is how many frames runtime.Callers skips to reach the verb:
-// Callers itself, callerName, verbLabel, and Do, Get or Try.
+// Callers itself, callerName, verbLabel, and Do, Get, Try or Attempt.
 const verbFrames = 4
 
 // verbLabel names a step after the function that called Do, Get or Try, with

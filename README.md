@@ -115,9 +115,12 @@ outcome := f.Act().TryGetClient("ghost")
 f.Inspect().Refused(outcome, "no such client")
 ```
 
-Each of the three has an `As` form that takes the step's name — `DoAs`, `GetAs`, `TryAs` — and a
-`For` form for a verb generic over a role, which appends the role to the name: `DoFor[K]`,
-`GetFor[K]`, `TryFor[K]`.
+`Attempt` is `Try` for an operation whose only outcome is whether it failed: it hands back the
+error.
+
+Each of these has an `As` form that takes the step's name — `DoAs`, `GetAs`, `TryAs`, `AttemptAs` —
+and a `For` form for a verb generic over a role, which appends the role to the name: `DoFor[K]`,
+`GetFor[K]`, `TryFor[K]`, `AttemptFor[K]`.
 
 ### Where verbs live
 
