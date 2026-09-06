@@ -108,10 +108,11 @@ f.Arrange().
 This makes the **core contract a `Step`, and the chain sugar over it** — a bare
 `func(...) mokkit.Step` vocabulary works standalone and is consumable by any chain.
 
-A `Step` carries its own name (`mokkit.NewStep("cache.HasClient", fn)`) rather than having one
-recovered from the runtime. Deriving it was tried and rejected: the compiler inlines the verb that
-built the closure, so `runtime.FuncForPC` reports the step under **its caller's** name — in practice
-the test function itself, which is worse than no name at all.
+A plain-function `Step` carries its own name (`mokkit.NewStep("cache.HasClient", fn)`). A verb
+written with `Do`, `Get` or `Try` is named after the verb itself, recovered through
+`runtime.CallersFrames`, which reports inlined frames as if they had been called (§15). The earlier
+rejection of derived names rested on `runtime.FuncForPC` over a raw program counter, which does not
+see through inlining; `CallersFrames` does.
 
 #### Vocabulary types must re-declare the chain-returning methods
 
@@ -1028,3 +1029,69 @@ it: a module on an older `go` directive can still **call** a generic method — 
 needs 1.27 — and the trial service was already moving. The sharper edge is tooling: an editor,
 `gofmt` or a `golangci-lint` pinned below 1.27 reports `method must have no type parameters` on
 perfectly valid source, which looks like a compile error and is not.
+
+---
+
+## 15. The v0.3 simplification
+
+The port was applied to the whole of the `cards` service: 15 unit suites, 4 workflow suites, and
+integration and end-to-end suites over real containers. Test bodies read as intended. Everything
+around them roughly doubled:
+
+| suite | before | after |
+| --- | --- | --- |
+| idempotency registry | 386 | 857 |
+| kafka worker | 115 | 275 |
+| audit activity | 345 | 768 |
+| plastic activation | 157 | 357 |
+
+The growth was in three places, and the review of it produced this release.
+
+### Verb ceremony
+
+Every verb carried four fixed lines that said nothing about the test: the closure signature with an
+unused context, `return nil`, the trailing `return a`, and in an act verb the `var out` / `var err`
+pair around the call. That is library shape, not suite shape.
+
+`mokkit.Do(v, fn, role...)` runs the step and hands the vocabulary value back, so a verb is one
+return. It is a free generic function because a method on `Chain` cannot return the embedding type;
+its constraint is an unexported method promoted from `*Chain`, which any type embedding one
+satisfies. The body is `func(Host)`, `func(Host) error` or a `StepFunc`, chosen by a type-set
+constraint, so the verb writes the narrowest one.
+
+`Chain.Get[T]` and `Chain.Try[T]` are generic methods, which Go 1.27 allows. `Get` is the act that
+returns its artifact and fails on error; `Try` is the act whose error is the artifact, returned as an
+`Outcome[T]`. Before `Try`, every activity suite in the trial wrote each act verb twice — once
+returning the value, once returning the error — and the workflow suites had invented an `Outcome`
+of their own. A panic inside `Try` still fails the chain: a crash is not an outcome.
+
+### Step names
+
+The step name was the one argument every verb repeated: `a.Add("SequenceYields", ...)` inside
+`SequenceYields`. It is now recovered from the calling frame. `runtime.Callers` plus
+`runtime.CallersFrames` reports the verb even when the compiler inlined it into the test, which is
+what the earlier attempt with `runtime.FuncForPC` could not do, and the test suite runs under
+`-gcflags=-l` as well as with inlining on to hold that. A verb generic over a role passes
+`NameOf[K]()`, which is appended in brackets; `Add` and `NewStep` keep explicit names for the cases
+that want one.
+
+### The fixture
+
+Every suite repeated forty lines that differed only in the container registrations: the fixture
+struct, the three accessors, `NewSetup`, the `Fatalf` on its error, `EnterStage`. Go cannot make a
+generic method return the embedding type, but it can make the fixture generic over the phase types:
+`Fixture[A, C, I Phase]`, with `Phase` constrained to `~struct{ *Chain }`, converts a fresh chain to
+the suite's own type with `A(struct{ *Chain }{c})`. `Enter` builds and enters in one call for a
+per-test composition; `Setup.Enter` does the same over a shared one. `bag.Fresh[T]` registers a
+zero-value double, which is what most hand-written doubles are.
+
+What stays: the three type declarations, `Helper()` on every verb, and the `And`/`All`/`WithContext`
+forwarders on a suite that uses them. The forwarders are the one piece of ceremony Go offers no way
+to remove.
+
+### The file rule
+
+The README prescribed five files per suite. For a five-test suite over a one-file subject that is
+four files of vocabulary beside one of tests, and the trial produced exactly that. The rule is now
+proportional: fixture, vocabulary and tests by default, one file for a small suite, a split by phase
+when the vocabulary is large enough to want one.
