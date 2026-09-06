@@ -3,7 +3,7 @@ module github.com/GrafGenerator/go-mokkit/container/mokkitmockery
 go 1.27
 
 require (
-	github.com/GrafGenerator/go-mokkit v0.2.0
+	github.com/GrafGenerator/go-mokkit v0.3.0
 	github.com/stretchr/testify v1.10.0
 )
 

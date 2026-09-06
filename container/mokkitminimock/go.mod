@@ -3,7 +3,7 @@ module github.com/GrafGenerator/go-mokkit/container/mokkitminimock
 go 1.27
 
 require (
-	github.com/GrafGenerator/go-mokkit v0.2.0
+	github.com/GrafGenerator/go-mokkit v0.3.0
 	github.com/gojuno/minimock/v3 v3.4.7
 )
 
