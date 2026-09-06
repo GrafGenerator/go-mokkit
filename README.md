@@ -115,7 +115,9 @@ outcome := f.Act().TryGetClient("ghost")
 f.Inspect().Refused(outcome, "no such client")
 ```
 
-`Add(name, fn)` is the explicit form, for a step whose name should not be the verb's.
+Each of the three has an `As` form that takes the step's name — `DoAs`, `GetAs`, `TryAs` — and a
+`For` form for a verb generic over a role, which appends the role to the name: `DoFor[K]`,
+`GetFor[K]`, `TryFor[K]`.
 
 ### Where verbs live
 
@@ -254,18 +256,17 @@ verb produced fails loudly, at the test's line, naming what *was* arranged:
 discount_test.go:23: mokkit: nothing arranged for main_test.Ghost (have: main_test.Buyer, main_test.Seller)
 ```
 
-The verb side declares the pairing once, and passes the role to `Do` so it appears in the step
-label:
+The verb side declares the pairing once, and `DoFor[K]` puts the role in the step label:
 
 ```go
 func (a Arrange) ClientExists[K mokkit.Token[Client]](status string) Arrange {
 	a.Helper()
 
-	return mokkit.Do(a, func(h mokkit.Host) {
+	return mokkit.DoFor[K](a, func(h mokkit.Host) {
 		c := Client{ID: "client-" + mokkit.NameOf[K](), Status: status}
 		*a.New[K]() = c
 		h.Resolve[*fakeClients]().add(c)
-	}, mokkit.NameOf[K]())
+	})
 }
 ```
 

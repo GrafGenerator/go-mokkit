@@ -197,11 +197,11 @@ func newUser(role string, status Status) User {
 func (a Arrange) UserExists[K mokkit.Token[User]](status Status) Arrange {
 	a.Helper()
 
-	return mokkit.Do(a, func(h mokkit.Host) {
+	return mokkit.DoFor[K](a, func(h mokkit.Host) {
 		u := newUser(mokkit.NameOf[K](), status)
 		h.Resolve[*fakeUsers]().add(u)
 		*a.New[K]() = u
-	}, mokkit.NameOf[K]())
+	})
 }
 
 // AUser hands the user straight back, for a test with a single actor.

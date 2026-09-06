@@ -1071,9 +1071,10 @@ The step name was the one argument every verb repeated: `a.Add("SequenceYields",
 `SequenceYields`. It is now recovered from the calling frame. `runtime.Callers` plus
 `runtime.CallersFrames` reports the verb even when the compiler inlined it into the test, which is
 what the earlier attempt with `runtime.FuncForPC` could not do, and the test suite runs under
-`-gcflags=-l` as well as with inlining on to hold that. A verb generic over a role passes
-`NameOf[K]()`, which is appended in brackets; `Add` and `NewStep` keep explicit names for the cases
-that want one.
+`-gcflags=-l` as well as with inlining on to hold that. A verb generic over a role uses the `For`
+form — `DoFor[K]`, `GetFor[K]`, `TryFor[K]` — which appends the role in brackets; the `As` form
+takes the name outright, for a helper that runs steps on a verb's behalf and would otherwise be
+named after itself. `Add` and `NewStep` keep explicit names as before.
 
 ### The fixture
 

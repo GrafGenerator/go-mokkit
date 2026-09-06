@@ -31,20 +31,41 @@ type Body interface {
 //	}
 //
 // The step is named after the verb that called Do; a Step keeps its own name.
-// A verb generic over a role passes mokkit.NameOf[K]() as role, which is
-// appended to the name in brackets.
-func Do[V Vocabulary, F Body](v V, fn F, role ...string) V {
+func Do[V Vocabulary, F Body](v V, fn F) V {
 	c := v.chain()
 	c.tb.Helper()
+	c.doAs(verbLabel(""), toStep(fn))
 
-	label := verbLabel(role)
-	step := toStep(fn)
+	return v
+}
+
+// DoFor is Do for a verb generic over a role: the role K is appended to the
+// step's name in brackets, as UserExists[Buyer].
+func DoFor[K any, V Vocabulary, F Body](v V, fn F) V {
+	c := v.chain()
+	c.tb.Helper()
+	c.doAs(verbLabel(NameOf[K]()), toStep(fn))
+
+	return v
+}
+
+// DoAs is Do with the step's name given, for a verb whose own name is not the
+// one to report under.
+func DoAs[V Vocabulary, F Body](v V, name string, fn F) V {
+	c := v.chain()
+	c.tb.Helper()
+	c.doAs(name, toStep(fn))
+
+	return v
+}
+
+func (c *Chain) doAs(label string, step Step) {
+	c.tb.Helper()
+
 	if step.Name != "" {
 		label = step.Name
 	}
 	c.run(label, step)
-
-	return v
 }
 
 // Get runs fn as a step and returns what it produced. An error fails the chain
@@ -58,14 +79,26 @@ func Do[V Vocabulary, F Body](v V, fn F, role ...string) V {
 //	    })
 //	}
 //
-// The step is named after the verb that called Get; role is appended as in Do.
-func (c *Chain) Get[T any](fn func(Host) (T, error), role ...string) T {
+// The step is named after the verb that called Get.
+func (c *Chain) Get[T any](fn func(Host) (T, error)) T {
+	c.tb.Helper()
+
+	return c.GetAs(verbLabel(""), fn)
+}
+
+// GetFor is Get for a verb generic over a role, named as DoFor names its step.
+func (c *Chain) GetFor[K, T any](fn func(Host) (T, error)) T {
+	c.tb.Helper()
+
+	return c.GetAs(verbLabel(NameOf[K]()), fn)
+}
+
+// GetAs is Get with the step's name given.
+func (c *Chain) GetAs[T any](name string, fn func(Host) (T, error)) T {
 	c.tb.Helper()
 
 	var out T
-
-	label := verbLabel(role)
-	c.run(label, NewStep(label, func(_ context.Context, h Host) error {
+	c.run(name, NewStep(name, func(_ context.Context, h Host) error {
 		var err error
 		out, err = fn(h)
 
@@ -86,14 +119,26 @@ type Outcome[T any] struct {
 // the error, so a test for a refusal inspects the error the way it inspects a
 // value. A panic inside fn still fails the chain.
 //
-// The step is named after the verb that called Try; role is appended as in Do.
-func (c *Chain) Try[T any](fn func(Host) (T, error), role ...string) Outcome[T] {
+// The step is named after the verb that called Try.
+func (c *Chain) Try[T any](fn func(Host) (T, error)) Outcome[T] {
+	c.tb.Helper()
+
+	return c.TryAs(verbLabel(""), fn)
+}
+
+// TryFor is Try for a verb generic over a role, named as DoFor names its step.
+func (c *Chain) TryFor[K, T any](fn func(Host) (T, error)) Outcome[T] {
+	c.tb.Helper()
+
+	return c.TryAs(verbLabel(NameOf[K]()), fn)
+}
+
+// TryAs is Try with the step's name given.
+func (c *Chain) TryAs[T any](name string, fn func(Host) (T, error)) Outcome[T] {
 	c.tb.Helper()
 
 	var out Outcome[T]
-
-	label := verbLabel(role)
-	c.run(label, NewStep(label, func(_ context.Context, h Host) error {
+	c.run(name, NewStep(name, func(_ context.Context, h Host) error {
 		out.Value, out.Err = fn(h)
 
 		return nil
@@ -127,13 +172,13 @@ const verbFrames = 4
 
 // verbLabel names a step after the function that called Do, Get or Try, with
 // the role appended in brackets when one is given.
-func verbLabel(role []string) string {
+func verbLabel(role string) string {
 	name := callerName(verbFrames)
 	if name == "" {
 		name = "step"
 	}
-	if len(role) > 0 {
-		name += "[" + strings.Join(role, ",") + "]"
+	if role != "" {
+		name += "[" + role + "]"
 	}
 
 	return name

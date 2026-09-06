@@ -32,7 +32,7 @@ func (a Arrange) ACachedClient(opts ...ClientOpt) clients.Client {
 func (a Arrange) CacheHasClient[K mokkit.Token[clients.Client]](opts ...ClientOpt) Arrange {
 	a.Helper()
 
-	return mokkit.Do(a, func(h mokkit.Host) error {
+	return mokkit.DoFor[K](a, func(h mokkit.Host) error {
 		client, err := cacheClient(h, opts...)
 		if err != nil {
 			return err
@@ -40,7 +40,7 @@ func (a Arrange) CacheHasClient[K mokkit.Token[clients.Client]](opts ...ClientOp
 		*a.New[K]() = client
 
 		return nil
-	}, mokkit.NameOf[K]())
+	})
 }
 
 // cachedClient is CacheHasClient authored as a plain function, the shape a

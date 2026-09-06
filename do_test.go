@@ -19,9 +19,15 @@ type role struct{ Artifact[User] }
 func (a arranging) UserExists[K Token[User]](status string) arranging {
 	a.Helper()
 
-	return Do(a, func(h Host) {
+	return DoFor[K](a, func(h Host) {
 		*a.New[K]() = User{ID: NameOf[K](), Status: status}
-	}, NameOf[K]())
+	})
+}
+
+func (a arranging) GreeterIsNamed(name string) arranging {
+	a.Helper()
+
+	return DoAs(a, "greeter.Named("+name+")", func(Host) {})
 }
 
 func (a arranging) GreeterIsSilent() arranging {
@@ -79,6 +85,22 @@ func (a acting) TryGreet(name string) Outcome[string] {
 			return "", errors.New("nobody to greet")
 		}
 
+		return h.Resolve[Greeter]().Greet(name), nil
+	})
+}
+
+func (a acting) GreetFor[K Token[User]]() string {
+	a.Helper()
+
+	return a.GetFor[K](func(h Host) (string, error) {
+		return h.Resolve[Greeter]().Greet(a.Of[K]().ID), nil
+	})
+}
+
+func (a acting) TryGreetAs(name string) Outcome[string] {
+	a.Helper()
+
+	return a.TryAs("greeter.Try("+name+")", func(h Host) (string, error) {
 		return h.Resolve[Greeter]().Greet(name), nil
 	})
 }
@@ -171,6 +193,28 @@ func TestDoAcceptsEveryBodyShape(t *testing.T) {
 
 	if calls := g.Calls(); len(calls) != 1 || calls[0] != "eve" {
 		t.Errorf("a Step body must run like any other: %v", calls)
+	}
+}
+
+func TestTheAsAndForFormsNameTheStep(t *testing.T) {
+	obs := newRecordingObserver()
+	stage, _ := doStage(t, t)
+	stage.observers = []Observer{obs}
+
+	arranging{stage.Arrange()}.
+		UserExists[role]("vip").
+		GreeterIsNamed("ann")
+	acting{stage.Act()}.GreetFor[role]()
+	acting{stage.Act()}.TryGreetAs("bob")
+	acting{stage.Act()}.GetAs("greeter.Get", func(Host) (string, error) { return "", nil })
+
+	_, steps, _ := obs.snapshot()
+
+	want := []string{"UserExists[role]", "greeter.Named(ann)", "GreetFor[role]", "greeter.Try(bob)", "greeter.Get"}
+	for n, w := range want {
+		if n >= len(steps) || steps[n].Step != w {
+			t.Errorf("step %d: want %q, got %+v", n, w, steps)
+		}
 	}
 }
 
