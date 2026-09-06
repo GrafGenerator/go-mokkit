@@ -78,9 +78,10 @@ func (a Arrange) CacheIsReachable() Arrange {
 }
 ```
 
-The body is a `func(mokkit.Host)` when it cannot fail, a `func(mokkit.Host) error` when it can, or a
-`mokkit.StepFunc` when it wants the context as an argument. The step is named after the verb, so a
-failure reads `arrange: CacheIsReachable: ...`.
+The body is a `func(mokkit.Host)` when it cannot fail, a `func(mokkit.Host) error` when it can, a
+`mokkit.StepFunc` when it wants the context as an argument, or a `mokkit.Step` from another
+package. The step is named after the verb, so a failure reads `arrange: CacheIsReachable: ...`; a
+`Step` keeps its own name.
 
 `a.Helper()` is the first line of every verb. Without it a failure reports the verb's body instead of
 the test's line.

@@ -42,6 +42,21 @@ func (a arranging) GreeterSeesContext() arranging {
 	})
 }
 
+// greeterSpeaks stands in for a step published by another package.
+func greeterSpeaks(name string) Step {
+	return NewStep("greeter.Speaks("+name+")", func(_ context.Context, h Host) error {
+		h.Resolve[Greeter]().Greet(name)
+
+		return nil
+	})
+}
+
+func (a arranging) GreeterSpoke(name string) arranging {
+	a.Helper()
+
+	return Do(a, greeterSpeaks(name))
+}
+
 func (a acting) Greet(name string) string {
 	a.Helper()
 
@@ -148,9 +163,28 @@ func TestDoAppendsTheRoleToTheName(t *testing.T) {
 }
 
 func TestDoAcceptsEveryBodyShape(t *testing.T) {
-	stage, _ := doStage(t, t)
+	stage, g := doStage(t, t)
 
-	arranging{stage.Arrange()}.GreeterSeesContext()
+	arranging{stage.Arrange()}.
+		GreeterSeesContext().
+		GreeterSpoke("eve")
+
+	if calls := g.Calls(); len(calls) != 1 || calls[0] != "eve" {
+		t.Errorf("a Step body must run like any other: %v", calls)
+	}
+}
+
+func TestDoRunsAStepUnderItsOwnName(t *testing.T) {
+	obs := newRecordingObserver()
+	stage, _ := doStage(t, t)
+	stage.observers = []Observer{obs}
+
+	arranging{stage.Arrange()}.GreeterSpoke("eve")
+
+	_, steps, _ := obs.snapshot()
+	if len(steps) != 1 || steps[0].Step != "greeter.Speaks(eve)" {
+		t.Errorf("want the step's own name, got %+v", steps)
+	}
 }
 
 func TestGetFailsTheChainOnError(t *testing.T) {

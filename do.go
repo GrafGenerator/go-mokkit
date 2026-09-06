@@ -14,9 +14,10 @@ func (c *Chain) chain() *Chain { return c }
 
 // A Body is the work a verb hands to Do. It receives the stage's Host and
 // reports failure by returning an error; a body that cannot fail returns
-// nothing.
+// nothing. A Step is a body too, so a verb can run vocabulary from another
+// package and keep its own type.
 type Body interface {
-	func(Host) | func(Host) error | func(context.Context, Host) error
+	func(Host) | func(Host) error | func(context.Context, Host) error | Step
 }
 
 // Do runs fn as a step of v's chain and hands v back, so a verb is one return:
@@ -29,14 +30,19 @@ type Body interface {
 //	    })
 //	}
 //
-// The step is named after the verb that called Do. A verb generic over a role
-// passes mokkit.NameOf[K]() as role, which is appended to the name in brackets.
+// The step is named after the verb that called Do; a Step keeps its own name.
+// A verb generic over a role passes mokkit.NameOf[K]() as role, which is
+// appended to the name in brackets.
 func Do[V Vocabulary, F Body](v V, fn F, role ...string) V {
 	c := v.chain()
 	c.tb.Helper()
 
 	label := verbLabel(role)
-	c.run(label, NewStep(label, toStepFunc(fn)))
+	step := toStep(fn)
+	if step.Name != "" {
+		label = step.Name
+	}
+	c.run(label, step)
 
 	return v
 }
@@ -96,17 +102,19 @@ func (c *Chain) Try[T any](fn func(Host) (T, error), role ...string) Outcome[T] 
 	return out
 }
 
-func toStepFunc[F Body](fn F) StepFunc {
+func toStep[F Body](fn F) Step {
 	switch fn := any(fn).(type) {
 	case func(Host):
-		return func(_ context.Context, h Host) error {
+		return NewStep("", func(_ context.Context, h Host) error {
 			fn(h)
 
 			return nil
-		}
+		})
 	case func(Host) error:
-		return func(_ context.Context, h Host) error { return fn(h) }
+		return NewStep("", func(_ context.Context, h Host) error { return fn(h) })
 	case func(context.Context, Host) error:
+		return NewStep("", fn)
+	case Step:
 		return fn
 	default:
 		panic("mokkit: unreachable: Body admits no other type")
