@@ -65,56 +65,77 @@ type (
 )
 ```
 
-A verb marks itself a helper, adds a named step, and returns the chain so it composes:
+A verb marks itself a helper and runs its step through `mokkit.Do`, which hands the phase back so
+the verb is one return:
 
 ```go
 func (a Arrange) CacheIsReachable() Arrange {
 	a.Helper()
-	a.Add("CacheIsReachable", func(ctx context.Context, h mokkit.Host) error {
+
+	return mokkit.Do(a, func(h mokkit.Host) {
 		h.Resolve[*cacheProbe]().reachable = true
-
-		return nil
 	})
-
-	return a
 }
 ```
 
-`a.Helper()` is the first line of every verb. Without it a failure reports the verb's body instead of
-the test's line, which makes a suite materially harder to work in.
+The body is a `func(mokkit.Host)` when it cannot fail, a `func(mokkit.Host) error` when it can, a
+`mokkit.StepFunc` when it wants the context as an argument, or a `mokkit.Step` from another
+package. The step is named after the verb, so a failure reads `arrange: CacheIsReachable: ...`; a
+`Step` keeps its own name.
 
-An **Act** verb returns its artifact directly, because the chain is eager:
+`a.Helper()` is the first line of every verb. Without it a failure reports the verb's body instead of
+the test's line.
+
+An **Act** verb returns its artifact directly, through `Get`. An error fails the chain:
 
 ```go
 func (a Act) GetClient(id string) *clients.Client {
 	a.Helper()
 
-	var out *clients.Client
-	a.Add("GetClient", func(ctx context.Context, h mokkit.Host) error {
-		var err error
-		out, err = h.Resolve[*cache.ClientCacheService]().GetClient(ctx, id)
-
-		return err
+	return a.Get(func(h mokkit.Host) (*clients.Client, error) {
+		return h.Resolve[*cache.ClientCacheService]().GetClient(h.Context(), id)
 	})
-
-	return out
 }
 ```
 
+A test about a refusal wants the error as its artifact. `Try` hands back an `Outcome` instead of
+failing on it:
+
+```go
+func (a Act) TryGetClient(id string) mokkit.Outcome[*clients.Client] {
+	a.Helper()
+
+	return a.Try(func(h mokkit.Host) (*clients.Client, error) {
+		return h.Resolve[*cache.ClientCacheService]().GetClient(h.Context(), id)
+	})
+}
+
+outcome := f.Act().TryGetClient("ghost")
+
+f.Inspect().Refused(outcome, "no such client")
+```
+
+`Attempt` is `Try` for an operation whose only outcome is whether it failed: it hands back the
+error.
+
+Each of these has an `As` form that takes the step's name — `DoAs`, `GetAs`, `TryAs`, `AttemptAs` —
+and a `For` form for a verb generic over a role, which appends the role to the name: `DoFor[K]`,
+`GetFor[K]`, `TryFor[K]`, `AttemptFor[K]`.
+
 ### Where verbs live
 
-**A scenario file holds tests and nothing else.** Verbs live in files named for
-their phase.
+**A scenario file holds tests and nothing else.** Vocabulary lives beside it, in as many files as
+its size warrants:
 
 ```
-fixture_test.go     composition, tokens, the fixture. No verbs.
-arrange_test.go     Arrange verbs
-act_test.go         Act verbs
-inspect_test.go     Inspect verbs, and the plain-function Steps And and All take
+fixture_test.go     composition and the fixture. No verbs.
+vocabulary_test.go  the verbs, in Arrange, Act and Inspect sections
 <feature>_test.go   tests
 ```
 
-Split a phase by feature when it grows: `arrange_cache_test.go`,
+A suite of a handful of tests may keep the fixture and the vocabulary in one `suite_test.go`. A
+vocabulary past a few hundred lines splits by phase — `arrange_test.go`, `act_test.go`,
+`inspect_test.go` — and a phase splits by feature when it grows again: `arrange_cache_test.go`,
 `arrange_billing_test.go`.
 
 ### Verbs should be atomic
@@ -153,8 +174,8 @@ f.Arrange().
 ```
 
 `And`, `All` and `WithContext` are promoted from the embedded `*Chain` returning `*mokkit.Chain`, so
-a call to any of them would end your fluent chain. Re-declare the ones you want fluent — one line
-each, written once per suite:
+a call to any of them would end your fluent chain. Re-declare the ones you use — one line each,
+written once per suite:
 
 ```go
 func (a Arrange) And(steps ...mokkit.Step) Arrange { a.Helper(); a.Chain.And(steps...); return a }
@@ -238,24 +259,21 @@ verb produced fails loudly, at the test's line, naming what *was* arranged:
 discount_test.go:23: mokkit: nothing arranged for main_test.Ghost (have: main_test.Buyer, main_test.Seller)
 ```
 
-The verb side declares the pairing once:
+The verb side declares the pairing once, and `DoFor[K]` puts the role in the step label:
 
 ```go
 func (a Arrange) ClientExists[K mokkit.Token[Client]](status string) Arrange {
 	a.Helper()
-	a.Add("ClientExists["+mokkit.NameOf[K]()+"]", func(ctx context.Context, h mokkit.Host) error {
+
+	return mokkit.DoFor[K](a, func(h mokkit.Host) {
 		c := Client{ID: "client-" + mokkit.NameOf[K](), Status: status}
 		*a.New[K]() = c
 		h.Resolve[*fakeClients]().add(c)
-
-		return nil
 	})
-
-	return a
 }
 ```
 
-`mokkit.NameOf[K]()` puts the role in the failure message:
+The role is what the failure message reports under:
 
 ```
 discount_test.go:23: arrange: OrderFor[Cart]: the client it was given is unset
@@ -271,7 +289,30 @@ at run time, that is what the return form is for.
 ## Composition
 
 A **Setup** is composed once and is expensive; a **Stage** is a scope over it, entered per test and
-closed when the test ends.
+closed when the test ends. A **Fixture** is what a test body talks to: the three phases, typed as
+the suite's own vocabulary, with `New`, `Of` and `Ref` promoted onto it.
+
+When the subject is cheap to build, compose and enter per test:
+
+```go
+type fixture = mokkit.Fixture[Arrange, Act, Inspect]
+
+func newFixture(t *testing.T) *fixture {
+	t.Helper()
+
+	b := bag.New()
+	bag.Fresh[fakeUsers](b)
+	bag.Alias[UserRepository, *fakeUsers](b)
+	bag.Scoped(b, func(r mokkit.Resolver) *DiscountService {
+		return &DiscountService{Users: mokkit.Resolve[UserRepository](r)}
+	})
+
+	return mokkit.Enter[Arrange, Act, Inspect](t, b)
+}
+```
+
+When the composition is expensive — mocks, a database, a broker — build it once in `TestMain` and
+enter it per test:
 
 ```go
 var composition *mokkit.Setup
@@ -295,27 +336,19 @@ func TestMain(m *testing.M) {
 }
 ```
 
-Compose in `TestMain`, not `init`.
-
-The per-test fixture embeds the stage's tokens; `New` and `Of` are promoted onto it:
-
 ```go
-type fixture struct {
-	*mokkit.Tokens
-	stage *mokkit.Stage
-}
+type fixture = mokkit.Fixture[Arrange, Act, Inspect]
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	stage := composition.EnterStage(t)
 
-	return &fixture{Tokens: stage.Tokens(), stage: stage}
+	return composition.Enter[Arrange, Act, Inspect](t)
 }
-
-func (f *fixture) Arrange() Arrange { return Arrange{f.stage.Arrange()} }
-func (f *fixture) Act() Act         { return Act{f.stage.Act()} }
-func (f *fixture) Inspect() Inspect { return Inspect{f.stage.Inspect()} }
 ```
+
+Compose in `TestMain`, not `init`. `EnterContext` on either form runs the stage's steps under an
+explicit context. A suite that wants more on its fixture embeds `*mokkit.Fixture[...]` in its own
+struct.
 
 ### `container/bag` — hand-wired
 
@@ -329,6 +362,7 @@ bag.Instance[Clock](b, fixedClock)                  // shared by every stage
 bag.Scoped(b, func(mokkit.Resolver) *fakeUsers {    // built once per stage
 	return newFakeUsers()
 })
+bag.Fresh[fakeRates](b)                             // *fakeRates, new(fakeRates) once per stage
 bag.Alias[UserRepository, *fakeUsers](b)            // one instance, two keys
 ```
 

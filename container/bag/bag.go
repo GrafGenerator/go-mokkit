@@ -313,3 +313,12 @@ func (e *CycleError) Error() string {
 
 	return "bag: dependency cycle: " + strings.Join(names, " -> ")
 }
+
+// Fresh registers *T, built as new(T) once per stage. It is the registration a
+// zero-value test double wants.
+//
+//	bag.Fresh[fakeUsers](b)              // resolves as *fakeUsers
+//	bag.Alias[UserRepository, *fakeUsers](b)
+func Fresh[T any](b *Builder) *Builder {
+	return Scoped(b, func(mokkit.Resolver) *T { return new(T) })
+}

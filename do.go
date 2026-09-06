@@ -1,0 +1,282 @@
+package mokkit
+
+import (
+	"context"
+	"runtime"
+	"strings"
+)
+
+// A Vocabulary is any type that embeds *Chain: a phase such as Arrange, or a
+// scope that carries a value alongside the chain.
+type Vocabulary interface{ chain() *Chain }
+
+func (c *Chain) chain() *Chain { return c }
+
+// A Body is the work a verb hands to Do. It receives the stage's Host and
+// reports failure by returning an error; a body that cannot fail returns
+// nothing. A Step is a body too, so a verb can run vocabulary from another
+// package and keep its own type.
+type Body interface {
+	func(Host) | func(Host) error | func(context.Context, Host) error | Step
+}
+
+// Do runs fn as a step of v's chain and hands v back, so a verb is one return:
+//
+//	func (a Arrange) SequenceYields(ids ...int64) Arrange {
+//	    a.Helper()
+//
+//	    return mokkit.Do(a, func(h mokkit.Host) {
+//	        h.Resolve[*fakeSequence]().values = ids
+//	    })
+//	}
+//
+// The step is named after the verb that called Do; a Step keeps its own name.
+func Do[V Vocabulary, F Body](v V, fn F) V {
+	c := v.chain()
+	c.tb.Helper()
+	c.doAs(verbLabel(""), toStep(fn))
+
+	return v
+}
+
+// DoFor is Do for a verb generic over a role: the role K is appended to the
+// step's name in brackets, as UserExists[Buyer].
+func DoFor[K any, V Vocabulary, F Body](v V, fn F) V {
+	c := v.chain()
+	c.tb.Helper()
+	c.doAs(verbLabel(NameOf[K]()), toStep(fn))
+
+	return v
+}
+
+// DoAs is Do with the step's name given, for a verb whose own name is not the
+// one to report under.
+func DoAs[V Vocabulary, F Body](v V, name string, fn F) V {
+	c := v.chain()
+	c.tb.Helper()
+	c.doAs(name, toStep(fn))
+
+	return v
+}
+
+func (c *Chain) doAs(label string, step Step) {
+	c.tb.Helper()
+
+	if step.Name != "" {
+		label = step.Name
+	}
+	c.run(label, step)
+}
+
+// Get runs fn as a step and returns what it produced. An error fails the chain
+// according to its FailMode; the value is returned only when there was none.
+//
+//	func (a Act) Discount(userID string) Result {
+//	    a.Helper()
+//
+//	    return a.Get(func(h mokkit.Host) (Result, error) {
+//	        return h.Resolve[*Service]().Calculate(h.Context(), userID)
+//	    })
+//	}
+//
+// The step is named after the verb that called Get.
+func (c *Chain) Get[T any](fn func(Host) (T, error)) T {
+	c.tb.Helper()
+
+	return c.GetAs(verbLabel(""), fn)
+}
+
+// GetFor is Get for a verb generic over a role, named as DoFor names its step.
+func (c *Chain) GetFor[K, T any](fn func(Host) (T, error)) T {
+	c.tb.Helper()
+
+	return c.GetAs(verbLabel(NameOf[K]()), fn)
+}
+
+// GetAs is Get with the step's name given.
+func (c *Chain) GetAs[T any](name string, fn func(Host) (T, error)) T {
+	c.tb.Helper()
+
+	var out T
+	c.run(name, NewStep(name, func(_ context.Context, h Host) error {
+		var err error
+		out, err = fn(h)
+
+		return err
+	}))
+
+	return out
+}
+
+// An Outcome is what Try hands back: the value fn produced and the error it
+// returned. Exactly one of them is meaningful.
+type Outcome[T any] struct {
+	Value T
+	Err   error
+}
+
+// Try runs fn as a step and returns its outcome without failing the chain on
+// the error, so a test for a refusal inspects the error the way it inspects a
+// value. A panic inside fn still fails the chain.
+//
+// The step is named after the verb that called Try.
+func (c *Chain) Try[T any](fn func(Host) (T, error)) Outcome[T] {
+	c.tb.Helper()
+
+	return c.TryAs(verbLabel(""), fn)
+}
+
+// TryFor is Try for a verb generic over a role, named as DoFor names its step.
+func (c *Chain) TryFor[K, T any](fn func(Host) (T, error)) Outcome[T] {
+	c.tb.Helper()
+
+	return c.TryAs(verbLabel(NameOf[K]()), fn)
+}
+
+// TryAs is Try with the step's name given.
+func (c *Chain) TryAs[T any](name string, fn func(Host) (T, error)) Outcome[T] {
+	c.tb.Helper()
+
+	var out Outcome[T]
+	c.run(name, NewStep(name, func(_ context.Context, h Host) error {
+		out.Value, out.Err = fn(h)
+
+		return nil
+	}))
+
+	return out
+}
+
+// Attempt runs fn as a step and returns the error it reported without failing
+// the chain on it: Try for an operation whose only outcome is whether it
+// failed. A panic inside fn still fails the chain.
+//
+// The step is named after the verb that called Attempt.
+func (c *Chain) Attempt(fn func(Host) error) error {
+	c.tb.Helper()
+
+	return c.AttemptAs(verbLabel(""), fn)
+}
+
+// AttemptFor is Attempt for a verb generic over a role, named as DoFor names
+// its step.
+func (c *Chain) AttemptFor[K any](fn func(Host) error) error {
+	c.tb.Helper()
+
+	return c.AttemptAs(verbLabel(NameOf[K]()), fn)
+}
+
+// AttemptAs is Attempt with the step's name given.
+func (c *Chain) AttemptAs(name string, fn func(Host) error) error {
+	c.tb.Helper()
+
+	var out error
+	c.run(name, NewStep(name, func(_ context.Context, h Host) error {
+		out = fn(h)
+
+		return nil
+	}))
+
+	return out
+}
+
+func toStep[F Body](fn F) Step {
+	switch fn := any(fn).(type) {
+	case func(Host):
+		return NewStep("", func(_ context.Context, h Host) error {
+			fn(h)
+
+			return nil
+		})
+	case func(Host) error:
+		return NewStep("", func(_ context.Context, h Host) error { return fn(h) })
+	case func(context.Context, Host) error:
+		return NewStep("", fn)
+	case Step:
+		return fn
+	default:
+		panic("mokkit: unreachable: Body admits no other type")
+	}
+}
+
+// verbFrames is how many frames runtime.Callers skips to reach the verb:
+// Callers itself, callerName, verbLabel, and Do, Get, Try or Attempt.
+const verbFrames = 4
+
+// verbLabel names a step after the function that called Do, Get or Try, with
+// the role appended in brackets when one is given.
+func verbLabel(role string) string {
+	name := callerName(verbFrames)
+	if name == "" {
+		name = "step"
+	}
+	if role != "" {
+		name += "[" + role + "]"
+	}
+
+	return name
+}
+
+// callerName reports the bare name of the function skip frames up, seeing
+// through inlining.
+func callerName(skip int) string {
+	var pcs [1]uintptr
+	if runtime.Callers(skip, pcs[:]) == 0 {
+		return ""
+	}
+
+	frame, _ := runtime.CallersFrames(pcs[:]).Next()
+
+	return bareName(frame.Function)
+}
+
+// bareName reduces a symbol to the function's own name: the import path, the
+// receiver, type arguments and closure ordinals are all dropped.
+//
+//	example.com/app.Arrange.UserExists[...].func1  ->  UserExists
+//	example.com/app.(*Probe).reset                 ->  reset
+func bareName(symbol string) string {
+	name := symbol[strings.LastIndex(symbol, "/")+1:]
+	name = strings.TrimSuffix(withoutBrackets(name), "-fm")
+
+	segments := strings.Split(name, ".")
+	for len(segments) > 1 && isClosureOrdinal(segments[len(segments)-1]) {
+		segments = segments[:len(segments)-1]
+	}
+
+	return segments[len(segments)-1]
+}
+
+func withoutBrackets(s string) string {
+	var b strings.Builder
+	depth := 0
+
+	for _, r := range s {
+		switch {
+		case r == '[':
+			depth++
+		case r == ']' && depth > 0:
+			depth--
+		case depth == 0:
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
+}
+
+// isClosureOrdinal reports whether a symbol segment is one the compiler gave a
+// closure: func1, or a bare number for a closure nested in one.
+func isClosureOrdinal(segment string) bool {
+	digits := strings.TrimPrefix(segment, "func")
+	if digits == "" {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	return true
+}

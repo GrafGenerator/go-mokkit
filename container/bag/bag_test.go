@@ -517,3 +517,24 @@ func expectPanic(t *testing.T, want string) {
 		t.Fatalf("expected a panic containing %q, got %v", want, r)
 	}
 }
+
+func TestFreshBuildsAZeroValueOncePerStage(t *testing.T) {
+	b := bag.New()
+	bag.Fresh[fixedClock](b)
+	bag.Alias[Clock, *fixedClock](b)
+
+	setup := setupWith(t, b)
+	first := setup.EnterStage(t)
+	second := setup.EnterStage(t)
+
+	clock := mokkit.Resolve[*fixedClock](first)
+	if clock == nil || clock.at != "" {
+		t.Fatalf("want a fresh zero value, got %+v", clock)
+	}
+	if mokkit.Resolve[Clock](first) != Clock(clock) {
+		t.Error("the alias must hand back the same instance")
+	}
+	if mokkit.Resolve[*fixedClock](second) == clock {
+		t.Error("each stage gets its own instance")
+	}
+}
